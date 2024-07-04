@@ -105,7 +105,7 @@ public actor LlamaContext {
         return swiftTokens
     }
     
-    func prompt(query: String, callback : (String?, String?) -> LlamaKitSamplingReturn) async throws -> String {
+    public func prompt(query: String, callback : (String?, String?) -> LlamaKitSamplingReturn) async throws -> String {
 //        let prompt = "<|user|>\n\(query)<|end|>\n<|assistant|>\n"
         
         
