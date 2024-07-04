@@ -5,19 +5,48 @@ import PackageDescription
 
 let package = Package(
     name: "LlamaKit",
+    
+    platforms: [
+        .iOS(.v15), .macOS(.v12)
+    ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
+        
+        .library(
+            name: "LlamaCppObjC",
+            targets: ["LlamaCppObjC"]
+        ),
         .library(
             name: "LlamaKit",
-            targets: ["LlamaKit"]),
+            targets: ["LlamaKit"]
+        )
+    ],
+    dependencies: [
+        .package(url: "https://github.com/ggerganov/llama.cpp", branch:"master"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "LlamaKit"),
+            name: "LlamaCppObjC",
+            dependencies: [
+                .product(name: "llama", package: "llama.cpp"),
+            ]
+        ),
+        .target(
+            name: "LlamaKit",
+            dependencies: [
+                .product(name: "llama", package: "llama.cpp"),
+                .target(name: "LlamaCppObjC")
+            ]
+        ),
         .testTarget(
             name: "LlamaKitTests",
-            dependencies: ["LlamaKit"]),
-    ]
+            dependencies: ["LlamaKit"],
+            resources: [
+                .copy("testmodels")
+            ]
+        ),
+    ],
+    cxxLanguageStandard: .cxx11
 )
