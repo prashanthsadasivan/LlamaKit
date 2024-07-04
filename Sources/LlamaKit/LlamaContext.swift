@@ -64,7 +64,7 @@ public actor LlamaContext {
         llama_backend_free()
     }
     
-    static func createContext(path:String, params: LlamaModelParams) throws -> LlamaContext {
+    public static func createContext(path:String, params: LlamaModelParams) throws -> LlamaContext {
         llama_backend_init()
         let modelParams = llama_model_default_params()
         let model = llama_load_model_from_file(path, modelParams)
