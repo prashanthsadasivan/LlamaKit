@@ -5,7 +5,7 @@
 public struct LlamaModelParams {
     public var contextLength: UInt32
     
-    init(contextLength: UInt32) {
+    public init(contextLength: UInt32) {
         self.contextLength = contextLength
     }
 }
