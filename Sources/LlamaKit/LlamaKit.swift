@@ -3,7 +3,7 @@
 
 
 public struct LlamaModelParams {
-    var contextLength: UInt32
+    public var contextLength: UInt32
 }
 public enum LlamaKitSamplingReturn {
     case complete
