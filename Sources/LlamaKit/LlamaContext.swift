@@ -101,13 +101,9 @@ public actor LlamaContext {
 
         var swiftTokens: [llama_token] = []
         
-        var log = "tokenizing: '\(text)' = ["
         for i in 0..<tokenCount {
-            log = "\(log), \(tokens[Int(i)])"
             swiftTokens.append(tokens[Int(i)])
         }
-        log = "\(log)]"
-        print(log)
 
         tokens.deallocate()
 
@@ -143,7 +139,6 @@ public actor LlamaContext {
             throw LlamaError.sampleInitFailed
         }
         let prompt = String(cString: formatted)
-        print("prompt \(prompt)")
         let promptTokens = tokenize(text: prompt, add_bos: true)
         let modelContextLen = llama_n_ctx(self.context)
         let nLen = 64 // TODO - what is this.

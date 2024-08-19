@@ -168,8 +168,6 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     } else {
         sampleRet = llama_token_to_piece(llamaContext, the_id);
     }
-    
-    NSLog(@"SamplingWrapper: sampleval: '%s', token: %d", sampleRet.c_str(), the_id);
     SampleResponse* ret =  [[SampleResponse alloc] initWithToken:the_id andSampleStr:[NSString stringWithUTF8String:sampleRet.c_str()]];
     
     return ret;
