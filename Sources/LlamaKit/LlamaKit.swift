@@ -1,7 +1,6 @@
 // The Swift Programming Language
 // https://docs.swift.org/swift-book
 
-
 public struct LlamaModelParams {
     public var contextLength: UInt32
     
@@ -9,12 +8,20 @@ public struct LlamaModelParams {
         self.contextLength = contextLength
     }
 }
+
+public struct LlamaSampledValue {
+    public var token: String
+    public var fullResponse: String
+    var tokenValue: Int32
+}
+
 public enum LlamaKitSamplingReturn {
     case complete
     case start
     case acceptAndAvoid(String, [String])
     case acceptAndForce(String, String)
-    case accept(String)
+    case force(String)
+    case accept(LlamaSampledValue)
     case reverseAndForce(String, String)
 }
 

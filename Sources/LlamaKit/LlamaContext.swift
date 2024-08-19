@@ -35,9 +35,11 @@ private actor SamplingWrapperActor {
     func accept(token: llama_token) {
         samplingWrapper.accept(token)
     }
-    func sample() -> String {
-        return samplingWrapper.sample()
+    
+    func sample() -> SampleResponse {
+        return samplingWrapper.sample()!
     }
+    
     func evaluateString(prompt: String) {
         samplingWrapper.evaluateString(prompt, batchSize: 1, addBos: false)
     }
@@ -68,10 +70,11 @@ public actor LlamaContext {
         llama_backend_init()
         let modelParams = llama_model_default_params()
         let model = llama_load_model_from_file(path, modelParams)
-        
+
         guard let model else {
             throw LlamaError.modelLoadFailed
         }
+        
         
         let nThreads = max(1, min(8, ProcessInfo.processInfo.processorCount - 2))
         var contextParams = llama_context_default_params()
@@ -79,6 +82,7 @@ public actor LlamaContext {
         contextParams.n_ctx = params.contextLength
         contextParams.n_threads = UInt32(nThreads)
         contextParams.n_threads_batch = UInt32(nThreads)
+        
         
         let context = llama_new_context_with_model(model, contextParams)
         
@@ -96,16 +100,21 @@ public actor LlamaContext {
         let tokenCount = llama_tokenize(self.llamaModel, text, Int32(utf8Count), tokens, Int32(n_tokens), add_bos, false)
 
         var swiftTokens: [llama_token] = []
+        
+        var log = "tokenizing: '\(text)' = ["
         for i in 0..<tokenCount {
+            log = "\(log), \(tokens[Int(i)])"
             swiftTokens.append(tokens[Int(i)])
         }
+        log = "\(log)]"
+        print(log)
 
         tokens.deallocate()
 
         return swiftTokens
     }
     
-    public func prompt(query: String, callback : (String?, String?) -> LlamaKitSamplingReturn) async throws -> String {
+    public func prompt(query: String, callback : (LlamaSampledValue?) -> LlamaKitSamplingReturn) async throws -> String {
 //        let prompt = "<|user|>\n\(query)<|end|>\n<|assistant|>\n"
         
         
@@ -146,22 +155,24 @@ public actor LlamaContext {
             print("\n n_len = \(nLen), n_ctx = \(modelContextLen), n_kv_req = \(nKVReq)")
         }
         await wrapper.evaluateString(prompt: prompt)
-        var callbackResult = callback(nil, nil)
+        var callbackResult = LlamaKitSamplingReturn.start
         var ret = ""
         var strings = Array<String>()
         while true {
             if case .complete = callbackResult {
                 break
             }
-            var sample: String? = nil
+            var sample: LlamaSampledValue? = nil
             switch callbackResult {
-                
-            case .accept(let str):
+            case .accept(let sample):
+                ret += sample.token
+                await wrapper.accept(token: sample.tokenValue)
+            case .force(let str):
                 let tokens = tokenize(text: str, add_bos: false)
                 for t in tokens {
                     await wrapper.accept(token: t)
                 }
-                ret += str
+                ret += " \(str)"
                 strings.append(str)
             case .acceptAndAvoid(let str, let avoid):
                 let tokens = tokenize(text: str, add_bos: false)
@@ -199,8 +210,9 @@ public actor LlamaContext {
             case .complete:
                 return ret
             }
-            sample = await wrapper.sample()
-            callbackResult = callback(sample, ret)
+            let r = await wrapper.sample()
+            sample = LlamaSampledValue(token: r.sampleStr, fullResponse: ret, tokenValue: Int32(r.sampleToken))
+            callbackResult = callback(sample)
         }
         return ret
     }

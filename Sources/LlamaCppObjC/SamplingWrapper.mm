@@ -8,6 +8,22 @@
 #import "SamplingWrapper.h"
 #include "sampling.hpp"
 
+
+@implementation SampleResponse {
+}
+
+
+- (instancetype)initWithToken:(llama_token)sampleToken andSampleStr:(NSString*)sampleStr{
+    self = [super init];
+    if (self) {
+        self->_sampleToken = sampleToken;
+        self->_sampleStr = sampleStr;
+    }
+    return self;
+}
+
+@end
+
 @implementation SamplingWrapper {
     struct llama_sampling_context *samplingContext;
     struct llama_context *llamaContext;
@@ -144,15 +160,19 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     return [NSString stringWithUTF8String:ret.c_str()];
 }
 
-- (NSString *)sample {
+- (SampleResponse*)sample {
     llama_token the_id = llama_sampling_sample(samplingContext, llamaContext, NULL);
-    static std::string ret;
+    static std::string sampleRet;
     if (llama_token_is_eog(llama_get_model(llamaContext), the_id)) {
-        ret = "</s>";
+        sampleRet = "</s>";
     } else {
-        ret = llama_token_to_piece(llamaContext, the_id);
+        sampleRet = llama_token_to_piece(llamaContext, the_id);
     }
-    return [NSString stringWithUTF8String:ret.c_str()];
+    
+    NSLog(@"SamplingWrapper: sampleval: '%s', token: %d", sampleRet.c_str(), the_id);
+    SampleResponse* ret =  [[SampleResponse alloc] initWithToken:the_id andSampleStr:[NSString stringWithUTF8String:sampleRet.c_str()]];
+    
+    return ret;
 }
 
 -(void) accept:(llama_token)theId {

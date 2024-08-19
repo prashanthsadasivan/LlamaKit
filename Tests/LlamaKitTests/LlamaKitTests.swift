@@ -16,22 +16,27 @@ final class LlamaKitTests: XCTestCase {
         let params = LlamaModelParams(contextLength: 4096)
         let context = try LlamaContext.createContext(path: path, params: params)
         var count = 0
-        let final =  try await context.prompt(query: "how are you") { word, sentence in
+        let final =  try await context.prompt(query: "how are you") { sample in
             
-            guard let word else {
+            guard let sample else {
                 return LlamaKitSamplingReturn.start
             }
-            
-            guard let sentence else {
-                return LlamaKitSamplingReturn.start
-            }
-            print("sample: \(word)")
+            let sentence = sample.fullResponse
+            let word = sample.token
+            print("sample(\(count)): '\(word)'")
             
             let idx = sentence.range(of: "I'm doing")
             if let idx = idx {
                 let endIdx = sentence.distance(from: sentence.startIndex, to: idx.upperBound)
                 if endIdx == sentence.count {
-                    return .accept(" poorly actually,")
+                    return .force("poorly actually,")
+                }
+            }
+            let feelings = sentence.range(of: "don't have feelings")
+            if let idx = feelings {
+                let endIdx = sentence.distance(from: sentence.startIndex, to: idx.upperBound)
+                if endIdx == sentence.count {
+                    return .force(", but I would say I'm doing poorly actually and I don't feel like helping very much.")
                 }
             }
             
@@ -42,7 +47,7 @@ final class LlamaKitTests: XCTestCase {
                 return .complete
             }
             count += 1
-            return .accept(word)
+            return .accept(sample)
         }
         print(final)
         XCTAssert(final.contains("poorly actually"))

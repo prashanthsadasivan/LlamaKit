@@ -6,7 +6,19 @@
 //
 #import <Foundation/Foundation.h>
 #include "llama.h"
+
+
+
+@interface SampleResponse : NSObject
+    @property NSString* sampleStr;
+    @property llama_token sampleToken;
+
+- (instancetype)initWithToken:(llama_token)sampleToken andSampleStr:(NSString*)sampleStr;
+@end
+
 @interface SamplingWrapper : NSObject
+
+
 
 // Initializers
 - (instancetype)initWithLlamaCtx:(struct llama_context*)llamaCtx;
@@ -20,7 +32,7 @@
 - (BOOL)evaluateTokens:(NSArray<NSNumber *> *)tokens batchSize:(NSInteger)batchSize;
 - (BOOL)evaluateString:(NSString *)string batchSize:(NSInteger)batchSize addBos:(BOOL)addBos;
 - (NSString *)sampleAndEvaluate;
-- (NSString *)sample;
+- (SampleResponse* )sample;
 - (void)accept:(llama_token)theId;
 - (void)reverse:(NSString *)bad;
 
