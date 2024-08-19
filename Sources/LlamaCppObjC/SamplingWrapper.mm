@@ -87,10 +87,10 @@ std::vector<llama_token> llama_tokenize(
 
 std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), true);
+    const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), 0, true);
     if (n_tokens < 0) {
         result.resize(-n_tokens);
-        int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), true);
+        int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), 0, true);
         GGML_ASSERT(check == -n_tokens);
     } else {
         result.resize(n_tokens);
@@ -168,6 +168,7 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     } else {
         sampleRet = llama_token_to_piece(llamaContext, the_id);
     }
+    
     SampleResponse* ret =  [[SampleResponse alloc] initWithToken:the_id andSampleStr:[NSString stringWithUTF8String:sampleRet.c_str()]];
     
     return ret;

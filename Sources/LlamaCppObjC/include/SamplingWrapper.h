@@ -7,8 +7,6 @@
 #import <Foundation/Foundation.h>
 #include "llama.h"
 
-
-
 @interface SampleResponse : NSObject
     @property NSString* sampleStr;
     @property llama_token sampleToken;
