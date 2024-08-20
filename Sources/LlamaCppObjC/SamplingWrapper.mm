@@ -155,8 +155,6 @@ struct serialization_header {
 
 - (NSData*) serializeContextIncludeSampler:(BOOL)includeSampler {
     std::string yo = llama_sampling_prev_str(samplingContext, llamaContext, 15);
-    
-    NSLog(@"prashanth SAVING sampling context %@", [NSString stringWithUTF8String:yo.c_str()]);
     const unsigned long size = llama_state_get_size(llamaContext);
     
     serialization_header header;
@@ -223,8 +221,6 @@ struct serialization_header {
 
 - (void) clear {
     std::string yo = llama_sampling_prev_str(samplingContext, llamaContext, 15);
-    
-    NSLog(@"prashanth SAVING sampling context %@", [NSString stringWithUTF8String:yo.c_str()]);
     nPast = 0; /* does this do anything? */
     llama_kv_cache_clear(llamaContext);
     [self resetSamplingContext];
@@ -255,7 +251,7 @@ struct serialization_header {
         nPast++;
     }
     batch.logits[batch.n_tokens - 1] = 1; // true
-    if (!decode_helper(llamaContext, batch, 1)) {
+    if (!decode_helper(llamaContext, batch, 2048)) {
         return false;
     }
     return true;
