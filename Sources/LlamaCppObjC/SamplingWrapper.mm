@@ -8,7 +8,6 @@
 #import "SamplingWrapper.h"
 #include "sampling.hpp"
 
-
 @implementation SampleResponse {
 }
 
@@ -28,7 +27,6 @@
     struct llama_sampling_context *samplingContext;
     struct llama_context *llamaContext;
     int nPast;
-    int nCur;
 }
 
 // debug flag enabling debug logs
@@ -41,7 +39,6 @@
         samplingContext = llama_sampling_init_default();
         llamaContext = llamaCtx;
         nPast = 0;
-        nCur = 0;
     }
     return self;
 }
@@ -53,7 +50,6 @@
 - (void)freeSamplingContext {
     llama_sampling_free(samplingContext);
 }
-
 
 - (void)dealloc {
     [self freeSamplingContext];
@@ -99,17 +95,87 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     return std::string(result.data(), result.size());
 }
 
-- (NSData*) serializeContext {
+struct serialization_header {
+    int nPast;
+    int nPrev;
+    int nCur;
+};
+
+- (NSData*) serializeContextIncludeSampler:(BOOL)includeSampler {
+    std::string yo = llama_sampling_prev_str(samplingContext, llamaContext, 15);
+    
+    NSLog(@"prashanth SAVING sampling context %@", [NSString stringWithUTF8String:yo.c_str()]);
     const unsigned long size = llama_state_get_size(llamaContext);
-    NSMutableData* buf = [NSMutableData dataWithLength:size];
-    uint8_t*  dst = (uint8_t*) [buf mutableBytes];
+    
+    serialization_header header;
+    header.nPast = nPast;
+    if (includeSampler) {
+        // default values will be 0
+        header.nCur = samplingContext->cur.size();
+        header.nPrev = samplingContext->prev.size();
+    } else {
+        header.nCur = 0;
+        header.nPrev = 0;
+    }
+    NSMutableData* headerData = [NSMutableData dataWithBytes:&header length:sizeof(serialization_header)];
+    
+    // if includeSampler is false, these will end up as 0 length, and the logic should just work fine?
+    llama_token* nPrevArr = samplingContext->prev.data();
+    NSMutableData* nPrevData = [NSMutableData dataWithBytes:nPrevArr length:(sizeof(llama_token)*header.nPrev)];
+    
+    llama_token_data* nCurArr = samplingContext->cur.data();
+    
+    NSMutableData* nCurData = [NSMutableData dataWithBytes:nCurArr length:(sizeof(llama_token_data)*header.nCur)];
+    
+    // if includeSampler is false, these will end up as 0 length, and the logic should just work fine?
+    [headerData appendData:nPrevData];
+    [headerData appendData:nCurData];
+    
+    NSMutableData* llamaContextData = [NSMutableData dataWithLength:size];
+    uint8_t*  dst = (uint8_t*) [llamaContextData mutableBytes];
     llama_state_get_data(llamaContext, dst, size);
-    return buf;
+    [headerData appendData:llamaContextData];
+    
+    return headerData;
 }
 
 - (BOOL) restoreContextWithData:(NSData *)data {
-    llama_state_set_data(llamaContext, (uint8_t*) data.bytes, data.length);
+    serialization_header header;
+    NSUInteger startIndex = sizeof(serialization_header);
+    [data getBytes:&header length:startIndex];
+    nPast = header.nPast;
+    
+    if (header.nPrev > 0) {
+        NSData* nPrevData = [data subdataWithRange:NSMakeRange(startIndex, [data length] - startIndex)];
+        llama_token* nPrevArr = (llama_token*) [nPrevData bytes];
+        
+        samplingContext->prev.clear();
+        for (int i = 0; i < header.nPrev; i++) {
+            samplingContext->prev.push_back(nPrevArr[i]);
+        }
+        startIndex += header.nPrev * sizeof(llama_token);
+        NSData* nCurData = [data subdataWithRange:NSMakeRange(startIndex, [data length] - startIndex)];
+        
+        
+        llama_token_data* nCurArr = (llama_token_data*) [nCurData bytes];
+        samplingContext->cur.clear();
+        for (int i = 0; i < header.nCur; i++) {
+            samplingContext->cur.push_back(nCurArr[i]);
+        }
+        startIndex += header.nCur * sizeof(llama_token_data);
+    }
+    NSData* contextBytes = [data subdataWithRange:NSMakeRange(startIndex, [data length] - startIndex)];
+    llama_state_set_data(llamaContext, (uint8_t*) contextBytes.bytes, contextBytes.length);
     return true;
+}
+
+- (void) clear {
+    std::string yo = llama_sampling_prev_str(samplingContext, llamaContext, 15);
+    
+    NSLog(@"prashanth SAVING sampling context %@", [NSString stringWithUTF8String:yo.c_str()]);
+    nPast = 0; /* does this do anything? */
+    llama_kv_cache_clear(llamaContext);
+    [self resetSamplingContext];
 }
 
 - (NSArray<NSNumber *> *)tokenizeText:(NSString *)text addSpecial:(BOOL)addSpecial parseSpecial:(BOOL)parseSpecial {
@@ -192,8 +258,8 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
 -(void) accept:(llama_token)theId {
     llama_sampling_accept(samplingContext, llamaContext, theId);
     [self evalId:theId];
-//    llama_batch_add(&theBatch, theId, nCur, [0], true);
-    nCur += 1;
+//    llama_batch_add(&theBatch, theId, nPast, [0], true);
+//    nPast += 1;
 }
 
 -(void) reverse:(NSString *)bad {
@@ -202,8 +268,7 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     self->nPast -= len;
 //    llama_sampling_accept(samplingContext, llamaContext, theId);
 //    [self evalId:theId];
-//    llama_batch_add(&theBatch, theId, nCur, [0], true);
-    nCur += 1;
+//    llama_batch_add(&theBatch, theId, nPast, [0], true);
 }
 
 

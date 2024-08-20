@@ -50,8 +50,8 @@ private actor SamplingWrapperActor {
         }, batchSize: 1)
     }
     
-    func serializeContext() -> Data {
-        return samplingWrapper.serializeContext();
+    func serializeContext(includeSampler: Bool) -> Data {
+        return samplingWrapper.serializeContextIncludeSampler(includeSampler);
     }
     
     func restoreContext(data: Data) {
@@ -62,16 +62,22 @@ private actor SamplingWrapperActor {
         samplingWrapper.reverse(bad)
     }
     
+    func clear() {
+        samplingWrapper.clear()
+    }
+    
 }
 
 public actor LlamaContext {
     private var llamaModel: OpaquePointer
     private var context: OpaquePointer
     private var nCur: Int32 = 0
+    private var wrapper: SamplingWrapperActor?
     
     init(llamaModel: OpaquePointer, context: OpaquePointer) {
         self.llamaModel = llamaModel
         self.context = context
+        self.wrapper = SamplingWrapperActor(samplingWrapper: SamplingWrapper(llamaCtx: context))
         // TODO - use batching?
     }
     
@@ -104,6 +110,7 @@ public actor LlamaContext {
         guard let context else {
             throw LlamaError.couldNotInitializeContext
         }
+        
         return LlamaContext(llamaModel: model, context: context)
     }
     
@@ -158,37 +165,38 @@ public actor LlamaContext {
         return promptTokens
     }
     
-    public func savePromptState(prompt: String) async throws -> Data {
-        guard let sampler = SamplingWrapper(llamaCtx: self.context) else {
-            throw LlamaError.sampleInitFailed
+    public func savePromptState(prompt: String, includeSampler: Bool) async throws -> Data {
+        guard let wrapper else {
+            throw LlamaError.modelLoadFailed
         }
-        
-        let wrapper = SamplingWrapperActor(samplingWrapper: sampler)
         let promptTokens = try chatifyAndTokenizeQuery(query: prompt)
         await wrapper.evaluateTokens(tokens: promptTokens)
-        return await wrapper.serializeContext();
+        return await wrapper.serializeContext(includeSampler: includeSampler);
     }
     
     public func restorePromptState(context: Data) async throws {
-        
-        guard let sampler = SamplingWrapper(llamaCtx: self.context) else {
-            throw LlamaError.sampleInitFailed
+        guard let wrapper else {
+            throw LlamaError.modelLoadFailed
         }
         
-        let wrapper = SamplingWrapperActor(samplingWrapper: sampler)
         await wrapper.restoreContext(data: context)
     }
     
     
-    public func prompt(query: String, callback : (LlamaSampledValue?) -> LlamaKitSamplingReturn) async throws -> String {
-        //        let prompt = "<|user|>\n\(query)<|end|>\n<|assistant|>\n"
+    public func clear() async throws {
         
-        
-        guard let sampler = SamplingWrapper(llamaCtx: self.context) else {
-            throw LlamaError.sampleInitFailed
+        guard let wrapper else {
+            throw LlamaError.modelLoadFailed
         }
         
-        let wrapper = SamplingWrapperActor(samplingWrapper: sampler)
+        await wrapper.clear()
+    }
+    
+    public func prompt(query: String, callback : (LlamaSampledValue?) -> LlamaKitSamplingReturn) async throws -> String {
+        
+        guard let wrapper else {
+            throw LlamaError.modelLoadFailed
+        }
         
         let promptTokens = try chatifyAndTokenizeQuery(query: query);
         await wrapper.evaluateTokens(tokens: promptTokens)

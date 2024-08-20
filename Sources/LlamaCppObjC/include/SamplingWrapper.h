@@ -32,9 +32,9 @@
 - (BOOL)evaluateString:(NSString *)string batchSize:(NSInteger)batchSize addBos:(BOOL)addBos;
 - (NSString *)sampleAndEvaluate;
 - (SampleResponse* )sample;
-- (NSData*) serializeContext;
+- (NSData*) serializeContextIncludeSampler:(BOOL)includeSampler;
 - (BOOL) restoreContextWithData:(NSData *)data;
 - (void)accept:(llama_token)theId;
 - (void)reverse:(NSString *)bad;
-
+- (void)clear;
 @end

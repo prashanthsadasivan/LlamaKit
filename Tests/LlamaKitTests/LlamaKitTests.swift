@@ -18,7 +18,6 @@ final class LlamaKitTests: XCTestCase {
     }
     
     func testExample() async throws {
-
         var count = 0
         let context = try prepare()
         let final =  try await context.prompt(query: "how are you") { sample in
@@ -69,8 +68,9 @@ final class LlamaKitTests: XCTestCase {
     
     func testSaveRestore() async throws {
         var count = 0
+        let timer = PerfTimer();
         let context = try prepare()
-        let saved = try await context.savePromptState(prompt: "How are you")
+        let saved = try await context.savePromptState(prompt: "Tell me a cool fact about", includeSampler: false)
         
         let callback: (LlamaSampledValue?) -> (LlamaKitSamplingReturn) = { sample in
             guard let sample else {
@@ -79,21 +79,95 @@ final class LlamaKitTests: XCTestCase {
             if sample.isEoS {
                 return .complete
             }
-            if count < 10 {
+            if count < 50 {
                 count = count + 1
                 return .accept(sample)
             }
             return .complete
         }
         
-        let expected =  try await context.prompt(query: "doing today?", callback: callback)
+        let first =  try await context.prompt(query: "dogs", callback: callback)
         
+        let long = timer.lap(desc: "save + prompt")
         count = 0
         let newContext = try prepare()
-        try await newContext.restorePromptState(context: saved)
-        let actual = try await context.prompt(query: "doing today?", callback: callback)
         
-        print("expected: \(expected)\t\tactual: \(actual)")
-        XCTAssert(expected == actual)
+        try await newContext.restorePromptState(context: saved)
+        let second = try await newContext.prompt(query: "birds", callback: callback)
+        let shorter = timer.lap(desc: "restore + prompt")
+        
+        print("first: timing: \(long), content: \(first), \t\tsecond: timing: \(long), content: \(second)")
+        XCTAssert(first.lowercased().contains("dogs"))
+        XCTAssert(!first.lowercased().contains("birds"))
+        XCTAssert(second.lowercased().contains("birds"))
+        XCTAssert(!second.lowercased().contains("dogs"))
+        XCTAssert(shorter <= long)
+    }
+    
+    
+    func testSaveClearRestore() async throws {
+        var count = 0
+        let context = try prepare()
+        let saved = try await context.savePromptState(prompt: "Help me write a short Markdown document with three bullet points of cool facts about ", includeSampler: false)
+        
+        let callback: (LlamaSampledValue?) -> (LlamaKitSamplingReturn) = { sample in
+            guard let sample else {
+                return LlamaKitSamplingReturn.start
+            }
+            if sample.isEoS {
+                return .complete
+            }
+            if count < 50 {
+                count = count + 1
+                return .accept(sample)
+            }
+            return .complete
+        }
+        
+        let first =  try await context.prompt(query: "dogs.", callback: callback)
+        
+        count = 0
+        try await context.clear()
+        try await context.restorePromptState(context: saved)
+        let second = try await context.prompt(query: "the original Apple 2 computer.", callback: callback)
+        
+        print("first: \(first)\t\tsecond: \(second)")
+        XCTAssert(first.lowercased().contains("dog"))
+        XCTAssert(!first.lowercased().contains("apple"))
+        XCTAssert(second.lowercased().contains("apple"))
+        XCTAssert(!second.lowercased().contains("dog"))
+    }
+    
+    
+    func testClear() async throws {
+        var count = 0
+        let prompt = "Tell me a cool fact about "
+        let context = try prepare()
+        
+        let callback: (LlamaSampledValue?) -> (LlamaKitSamplingReturn) = { sample in
+            guard let sample else {
+                return LlamaKitSamplingReturn.start
+            }
+            if sample.isEoS {
+                return .complete
+            }
+            if count < 50 {
+                count = count + 1
+                return .accept(sample)
+            }
+            return .complete
+        }
+        
+        let first =  try await context.prompt(query: "\(prompt) anteaters", callback: callback)
+        
+        count = 0
+        try await context.clear()
+        let second = try await context.prompt(query: "\(prompt) birds and the previous animal i asked you about", callback: callback)
+        
+        print("first: \(first)\t\tsecond: \(second)")
+        XCTAssert(first.lowercased().contains("anteater"))
+        XCTAssert(!first.lowercased().contains("bird"))
+        XCTAssert(second.lowercased().contains("bird"))
+        XCTAssert(!second.lowercased().contains("anteater"))
     }
 }
