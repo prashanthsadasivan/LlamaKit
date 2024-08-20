@@ -10,6 +10,7 @@
 @interface SampleResponse : NSObject
     @property NSString* sampleStr;
     @property llama_token sampleToken;
+    @property BOOL isEndOfSentence;
 
 - (instancetype)initWithToken:(llama_token)sampleToken andSampleStr:(NSString*)sampleStr;
 @end
@@ -31,6 +32,8 @@
 - (BOOL)evaluateString:(NSString *)string batchSize:(NSInteger)batchSize addBos:(BOOL)addBos;
 - (NSString *)sampleAndEvaluate;
 - (SampleResponse* )sample;
+- (NSData*) serializeContext;
+- (BOOL) restoreContextWithData:(NSData *)data;
 - (void)accept:(llama_token)theId;
 - (void)reverse:(NSString *)bad;
 

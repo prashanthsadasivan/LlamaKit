@@ -13,6 +13,7 @@ public struct LlamaSampledValue {
     public var token: String
     public var fullResponse: String
     var tokenValue: Int32
+    public var isEoS: Bool
 }
 
 public enum LlamaKitSamplingReturn {

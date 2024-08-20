@@ -1,6 +1,6 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by Prashanth Sadasivan on 6/28/24.
 //
@@ -22,7 +22,7 @@ func llama_batch_add(_ batch: inout llama_batch, _ id: llama_token, _ pos: llama
         batch.seq_id[Int(batch.n_tokens)]![Int(i)] = seq_ids[i]
     }
     batch.logits  [Int(batch.n_tokens)] = logits ? 1 : 0
-
+    
     batch.n_tokens += 1
 }
 
@@ -43,6 +43,21 @@ private actor SamplingWrapperActor {
     func evaluateString(prompt: String) {
         samplingWrapper.evaluateString(prompt, batchSize: 1, addBos: false)
     }
+    
+    func evaluateTokens(tokens: [llama_token]) {
+        samplingWrapper.evaluateTokens(tokens.map { t in
+            NSNumber(value: t)
+        }, batchSize: 1)
+    }
+    
+    func serializeContext() -> Data {
+        return samplingWrapper.serializeContext();
+    }
+    
+    func restoreContext(data: Data) {
+        samplingWrapper.restoreContext(with: data);
+    }
+    
     func reverse(bad: String) {
         samplingWrapper.reverse(bad)
     }
@@ -70,7 +85,7 @@ public actor LlamaContext {
         llama_backend_init()
         let modelParams = llama_model_default_params()
         let model = llama_load_model_from_file(path, modelParams)
-
+        
         guard let model else {
             throw LlamaError.modelLoadFailed
         }
@@ -92,34 +107,25 @@ public actor LlamaContext {
         return LlamaContext(llamaModel: model, context: context)
     }
     
-
+    
     private func tokenize(text: String, add_bos: Bool) -> [llama_token] {
         let utf8Count = text.utf8.count
         let n_tokens = utf8Count + (add_bos ? 1 : 0) + 1
         let tokens = UnsafeMutablePointer<llama_token>.allocate(capacity: n_tokens)
         let tokenCount = llama_tokenize(self.llamaModel, text, Int32(utf8Count), tokens, Int32(n_tokens), add_bos, false)
-
+        
         var swiftTokens: [llama_token] = []
         
         for i in 0..<tokenCount {
             swiftTokens.append(tokens[Int(i)])
         }
-
+        
         tokens.deallocate()
-
+        
         return swiftTokens
     }
     
-    public func prompt(query: String, callback : (LlamaSampledValue?) -> LlamaKitSamplingReturn) async throws -> String {
-//        let prompt = "<|user|>\n\(query)<|end|>\n<|assistant|>\n"
-        
-        
-        guard let sampler = SamplingWrapper(llamaCtx: self.context) else {
-            throw LlamaError.sampleInitFailed
-        }
-        
-        let wrapper = SamplingWrapperActor(samplingWrapper: sampler)
-        
+    private func chatifyAndTokenizeQuery(query: String) throws -> [llama_token] {
         var cRole: UnsafePointer<CChar>?
         var cPrompt: UnsafePointer<CChar>?
         "user".withCString { role in
@@ -143,13 +149,49 @@ public actor LlamaContext {
         let modelContextLen = llama_n_ctx(self.context)
         let nLen = 64 // TODO - what is this.
         let nKVReq = promptTokens.count + (Int(nLen) - promptTokens.count)
-
-
+        
+        
         if nKVReq > modelContextLen {
             print("error: n_kv_req > n_ctx, the required KV cache size is not big enough")
             print("\n n_len = \(nLen), n_ctx = \(modelContextLen), n_kv_req = \(nKVReq)")
         }
-        await wrapper.evaluateString(prompt: prompt)
+        return promptTokens
+    }
+    
+    public func savePromptState(prompt: String) async throws -> Data {
+        guard let sampler = SamplingWrapper(llamaCtx: self.context) else {
+            throw LlamaError.sampleInitFailed
+        }
+        
+        let wrapper = SamplingWrapperActor(samplingWrapper: sampler)
+        let promptTokens = try chatifyAndTokenizeQuery(query: prompt)
+        await wrapper.evaluateTokens(tokens: promptTokens)
+        return await wrapper.serializeContext();
+    }
+    
+    public func restorePromptState(context: Data) async throws {
+        
+        guard let sampler = SamplingWrapper(llamaCtx: self.context) else {
+            throw LlamaError.sampleInitFailed
+        }
+        
+        let wrapper = SamplingWrapperActor(samplingWrapper: sampler)
+        await wrapper.restoreContext(data: context)
+    }
+    
+    
+    public func prompt(query: String, callback : (LlamaSampledValue?) -> LlamaKitSamplingReturn) async throws -> String {
+        //        let prompt = "<|user|>\n\(query)<|end|>\n<|assistant|>\n"
+        
+        
+        guard let sampler = SamplingWrapper(llamaCtx: self.context) else {
+            throw LlamaError.sampleInitFailed
+        }
+        
+        let wrapper = SamplingWrapperActor(samplingWrapper: sampler)
+        
+        let promptTokens = try chatifyAndTokenizeQuery(query: query);
+        await wrapper.evaluateTokens(tokens: promptTokens)
         var callbackResult = LlamaKitSamplingReturn.start
         var ret = ""
         var strings = Array<String>()
@@ -206,7 +248,8 @@ public actor LlamaContext {
                 return ret
             }
             let r = await wrapper.sample()
-            sample = LlamaSampledValue(token: r.sampleStr, fullResponse: ret, tokenValue: Int32(r.sampleToken))
+            sample = LlamaSampledValue(token: r.sampleStr, fullResponse: ret, tokenValue: Int32(r.sampleToken), isEoS: r.isEndOfSentence)
+            
             callbackResult = callback(sample)
         }
         return ret

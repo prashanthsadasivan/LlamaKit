@@ -99,6 +99,19 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     return std::string(result.data(), result.size());
 }
 
+- (NSData*) serializeContext {
+    const unsigned long size = llama_state_get_size(llamaContext);
+    NSMutableData* buf = [NSMutableData dataWithLength:size];
+    uint8_t*  dst = (uint8_t*) [buf mutableBytes];
+    llama_state_get_data(llamaContext, dst, size);
+    return buf;
+}
+
+- (BOOL) restoreContextWithData:(NSData *)data {
+    llama_state_set_data(llamaContext, (uint8_t*) data.bytes, data.length);
+    return true;
+}
+
 - (NSArray<NSNumber *> *)tokenizeText:(NSString *)text addSpecial:(BOOL)addSpecial parseSpecial:(BOOL)parseSpecial {
     std::vector<llama_token> tokens = llama_tokenize(llamaContext, [text UTF8String], addSpecial, parseSpecial);
     NSMutableArray<NSNumber *> *tokenNumbers = [NSMutableArray arrayWithCapacity:tokens.size()];
@@ -163,7 +176,8 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
 - (SampleResponse*)sample {
     llama_token the_id = llama_sampling_sample(samplingContext, llamaContext, NULL);
     static std::string sampleRet;
-    if (llama_token_is_eog(llama_get_model(llamaContext), the_id)) {
+    BOOL isEndOfSentence = llama_token_is_eog(llama_get_model(llamaContext), the_id);
+    if (isEndOfSentence) {
         sampleRet = "</s>";
     } else {
         sampleRet = llama_token_to_piece(llamaContext, the_id);
@@ -171,6 +185,7 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     
     SampleResponse* ret =  [[SampleResponse alloc] initWithToken:the_id andSampleStr:[NSString stringWithUTF8String:sampleRet.c_str()]];
     
+    ret.isEndOfSentence = isEndOfSentence;
     return ret;
 }
 
