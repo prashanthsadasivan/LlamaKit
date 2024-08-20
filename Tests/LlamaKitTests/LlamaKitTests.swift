@@ -96,7 +96,7 @@ final class LlamaKitTests: XCTestCase {
         let second = try await newContext.prompt(query: "birds", callback: callback)
         let shorter = timer.lap(desc: "restore + prompt")
         
-        print("first: timing: \(long), content: \(first), \t\tsecond: timing: \(long), content: \(second)")
+        print("first: timing: \(long), content: \(first), \t\tsecond: timing: \(shorter), content: \(second)")
         XCTAssert(first.lowercased().contains("dogs"))
         XCTAssert(!first.lowercased().contains("birds"))
         XCTAssert(second.lowercased().contains("birds"))

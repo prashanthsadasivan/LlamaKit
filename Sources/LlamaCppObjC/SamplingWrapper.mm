@@ -27,6 +27,8 @@
     struct llama_sampling_context *samplingContext;
     struct llama_context *llamaContext;
     int nPast;
+    struct llama_batch batch;
+    int nBatch;
 }
 
 // debug flag enabling debug logs
@@ -39,6 +41,8 @@
         samplingContext = llama_sampling_init_default();
         llamaContext = llamaCtx;
         nPast = 0;
+        nBatch = 16;
+        batch = llama_batch_init(llama_n_ctx(llamaCtx), 0, 1);
     }
     return self;
 }
@@ -93,6 +97,54 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     }
 
     return std::string(result.data(), result.size());
+}
+
+bool decode_helper(llama_context * ctx, llama_batch & batch, int32_t n_batch) {
+    for (int32_t i = 0; i < (int32_t) batch.n_tokens; i += n_batch) {
+        const int32_t n_tokens = std::min(n_batch, (int32_t) (batch.n_tokens - i));
+
+        llama_batch batch_view = {
+            n_tokens,
+            batch.token    + i,
+            nullptr,
+            batch.pos      + i,
+            batch.n_seq_id + i,
+            batch.seq_id   + i,
+            batch.logits   + i,
+            0, 0, 0, // unused
+        };
+
+        const int ret = llama_decode(ctx, batch_view);
+        if (ret != 0) {
+//            NSLog("failed to decode the batch, n_batch = %d, ret = %d\n", n_batch, ret);
+            return false;
+        }
+
+        llama_synchronize(ctx);
+    }
+
+    return true;
+}
+
+void llama_batch_clear(struct llama_batch & batch) {
+    batch.n_tokens = 0;
+}
+
+void llama_batch_add(
+                 struct llama_batch & batch,
+                        llama_token   id,
+                          llama_pos   pos,
+    const std::vector<llama_seq_id> & seq_ids,
+                               bool   logits) {
+    batch.token   [batch.n_tokens] = id;
+    batch.pos     [batch.n_tokens] = pos;
+    batch.n_seq_id[batch.n_tokens] = seq_ids.size();
+    for (size_t i = 0; i < seq_ids.size(); ++i) {
+        batch.seq_id[batch.n_tokens][i] = seq_ids[i];
+    }
+    batch.logits  [batch.n_tokens] = logits;
+
+    batch.n_tokens++;
 }
 
 struct serialization_header {
@@ -194,20 +246,17 @@ struct serialization_header {
 
 - (BOOL)evaluateTokens:(NSArray<NSNumber *> *)tokens batchSize:(NSInteger)batchSize {
     std::vector<llama_token> tokenVector;
+    std::vector<llama_seq_id> pos;
+    pos.push_back(0);
+    llama_batch_clear(batch);
     for (NSNumber *tokenNumber in tokens) {
-        tokenVector.push_back([tokenNumber intValue]);
+        llama_token token = [tokenNumber intValue];
+        llama_batch_add(batch, token, nPast, pos, false);
+        nPast++;
     }
-        int N = (int) tokens.count;
-    int n_batch = batchSize;
-    for (int i = 0; i < N; i += n_batch) {
-        int n_eval = (int) tokens.count - i;
-        if (n_eval > n_batch) {
-            n_eval = n_batch;
-        }
-        if (llama_decode(llamaContext, llama_batch_get_one(&tokenVector[i], n_eval, nPast, 0))) {
-            return false;
-        }
-        nPast += n_eval;
+    batch.logits[batch.n_tokens - 1] = 1; // true
+    if (!decode_helper(llamaContext, batch, 1)) {
+        return false;
     }
     return true;
 }
